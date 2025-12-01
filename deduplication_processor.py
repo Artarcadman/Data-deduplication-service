@@ -6,14 +6,14 @@ import time
 # --- КОНФИГУРАЦИЯ БАЗЫ ДАННЫХ (PostgreSQL) ---
 DB_CONFIG = {
     "host": "localhost",
-    "database": "deduplication_db",
-    "user": "postgres",
+    "database": "deduplication_db",  
+    "user": "postgres",            
     "password": "artem"
 }
 
 # --- КОНФИГУРАЦИЯ АЛГОРИТМА ---
-INPUT_FILENAME = "text_data.txt"
-CHUNK_SIZE = 4  # Размер сегмента в байтах
+INPUT_FILENAME = "Тестовое задание на аналитика.pbix"  # Используем бинарный файл
+CHUNK_SIZE = 4  # Размер сегмента в байтах (по условию курсового)
 
 def connect_db():
     """Устанавливает соединение с PostgreSQL"""
@@ -26,8 +26,8 @@ def connect_db():
 
 def process_file(conn, filename, chunk_size):
     """
-    Чтение бинарного файла по сегментам (4 байта), вычисление хэша и
-    обновление/вставка данных в таблицу file_chunks.
+    Чтение бинарного файла по сегментам (4 байта), вычисление хэша,
+    хранение самого сегмента (chunk_data) и обновление/вставка данных.
     """
     if not os.path.exists(filename):
         print(f"Ошибка: Файл '{filename}' не найден.")
@@ -52,6 +52,8 @@ def process_file(conn, filename, chunk_size):
             hash_value = hash_object.hexdigest()
 
             # UPSERT: Сначала пытаемся обновить счетчик (если хэш уже есть)
+            # Внимание: при повторении данных, мы не обновляем chunk_data, 
+            # так как он будет одинаковым.
             cursor.execute(
                 """
                 UPDATE file_chunks
@@ -63,12 +65,14 @@ def process_file(conn, filename, chunk_size):
 
             # Если обновление не затронуло ни одной строки (хэш новый), делаем INSERT
             if cursor.rowcount == 0:
+                # ВСТАВЛЯЕМ НОВЫЙ СТОЛБЕЦ chunk_data
                 cursor.execute(
                     """
-                    INSERT INTO file_chunks (hash_value, file_name, segment_offset, repetition_count)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO file_chunks (hash_value, file_name, segment_offset, repetition_count, chunk_data)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
-                    (hash_value, filename, segment_offset, 1)
+                    # Передаем сам chunk (бинарные данные)
+                    (hash_value, filename, segment_offset, 1, chunk) 
                 )
 
             segment_offset += chunk_size
@@ -81,7 +85,7 @@ def process_file(conn, filename, chunk_size):
     end_time = time.time()
     
     print("-" * 40)
-    print(f"✅ Обработка завершена.")
+    print(f"   Обработка завершена.")
     print(f"   Файл: {filename}")
     print(f"   Размер сегмента: {chunk_size} байт")
     print(f"   Общее время: {end_time - start_time:.2f} сек.")
