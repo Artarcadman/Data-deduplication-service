@@ -8,7 +8,7 @@ DB_CONFIG = {
     "host": "localhost",
     "database": "deduplication_db",  
     "user": "postgres",            
-    "password": "artem"
+    "password": "" # Ввести
 }
 
 # --- КОНФИГУРАЦИЯ АЛГОРИТМА ---
