@@ -4,3 +4,4 @@ Data Engineering is cool.
 Data engineering is cool.
 Data Engineering is cool.
 Data Science is cool.
+Data Analysis is cool too.

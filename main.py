@@ -1,18 +1,62 @@
+import time
 import psycopg2
 import hashlib
 import os
-import time
+from dotenv import load_dotenv
 
-# --- КОНФИГУРАЦИЯ БАЗЫ ДАННЫХ (PostgreSQL) ---
+# --- Load /.env variables --- 
+load_dotenv()
+HOST = os.getenv("HOST")
+DATABASE = os.getenv("DATABASE")
+USER = os.getenv("USER")
+PASSWORD = os.getenv("PASSWORD")
+
+# --- PosgreSQL Configuration ---
 DB_CONFIG = {
-    "host": "localhost",
-    "database": "deduplication_db",  
-    "user": "postgres",            
-    "password": "" # Ввести
+    "host": HOST,
+    "database": DATABASE,  
+    "user": USER,            
+    "password": PASSWORD
 }
 
-# --- КОНФИГУРАЦИЯ АЛГОРИТМА ---
-INPUT_FILENAME = "Тестовое задание на аналитика.pbix"  # Используем бинарный файл
+# --- Input file choice ---
+def select_file(directory = "./origin_data"):
+    """
+    Makes list of files in "./origin_data" directory
+    """
+    try:
+        files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
+    except FileNotFoundError:
+        print("Directory not found")
+        return None
+    if not files:
+        print(f'Directory "{directory}" has no files')
+        return None
+    
+    print(f'Available files in "{directory}":')
+    for i, file in enumerate(files):
+        print(f"{i+1}. {file}")
+
+    while True:
+        choice = input(f"Choose file (1 - {len(files)})")
+        try:
+            index = int(choice)-1
+            if 0 <= index <= len(files):
+                return os.path.join(directory, files[index])
+            else:
+                print("This file not exists. Try your BEST again")
+        except ValueError:
+            print("Only numbers")
+                 
+INPUT_FILENAME = select_file(directory=".\origin_data")
+if INPUT_FILENAME:
+    print(f"You work with {INPUT_FILENAME}.")
+else:
+    exit()
+
+
+# --- Algorithm ---
+
 CHUNK_SIZE = 4  # Размер сегмента в байтах (по условию курсового)
 
 def connect_db():
