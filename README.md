@@ -1,0 +1,1 @@
+### Service for deduplication data synk with PostgreSQL
