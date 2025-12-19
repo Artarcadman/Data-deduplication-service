@@ -1,278 +1,105 @@
-import time
-import psycopg2
-import hashlib
 import os
+import hashlib
+import time
 from dotenv import load_dotenv
+from db_manager import DBManager
+from storage_manager import StorageManager
 
-# --- Load /.env variables --- 
 load_dotenv()
-HOST = os.getenv("HOST")
-DATABASE = os.getenv("DATABASE")
-USER = os.getenv("USER")
-PASSWORD = os.getenv("PASSWORD")
 
-# --- PosgreSQL Configuration ---
-DB_CONFIG = {
-    "host": HOST,
-    "database": DATABASE,  
-    "user": USER,            
-    "password": PASSWORD
-}
+CHUNK_SIZE = 4  # Учебное требование
 
-CHUNK_SIZE = 4  # Size of segment
-
-# --- Input file choice ---
-def select_file(directory = "./origin_data"):
-    """
-    Makes list of files in "./origin_data" directory
-    """
-    try:
-        
-        all_entries = os.listdir(directory)
-        files = []
-        for entry in all_entries:
-            full_path = os.path.join(directory, entry)
-            if os.path.isfile(full_path) and not entry.startswith('.gitkeep'):
-                files.append(entry)
-            
-    except ValueError:
-        print("Directory not found")
-        return None
-    
+def select_file(directory="./origin_data"):
+    if not os.path.exists(directory): os.makedirs(directory)
+    files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f)) and not f.startswith('.')]
     if not files:
-        print(f'Directory "{directory}" has no files')
+        print(f"Папка {directory} пуста!")
         return None
     
-    print(f'Available files in "{directory}":\n')
-    for i, file in enumerate(files):
-        print(f"{i+1}. {file}")
-
+    print("\nДоступные файлы:")
+    for i, f in enumerate(files, 1): print(f"{i}. {f}")
+    
     while True:
-        choice = input(f"\nChoose file (1 - {len(files)})")
         try:
-            index = int(choice)-1
-            if 0 <= index < len(files):
-                return os.path.join(directory, files[index])
-            else:
-                print("This file not exists. Try your BEST again")
-        except ValueError:
-            print("Only numbers")
-   
-    
-def connect_db():
-    """Connect to PostgreSQL"""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
-    except Exception as e:
-        print(f"Can't connect to PostgreSQL. Check PostgreSQL launcher, db name/user/password. Error: {e}")
-        return None
-    
-    
-def check_file_processed(conn, filepath):
-    """Make hash of FULL file and check if it was done before"""
-    # Make HASH for file
+            choice = int(input(f"\nВыберите файл (1-{len(files)}): "))
+            if 1 <= choice <= len(files): return os.path.join(directory, files[choice-1])
+        except ValueError: print("Введите только число!")
+
+def get_full_file_hash(filepath):
     hasher = hashlib.sha256()
     with open(filepath, 'rb') as f:
-        while chunk := f.read(65536):
-            hasher.update(chunk)
-    full_hash = hasher.hexdigest()
-    
-    # Check HASH in database
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM processed_files WHERE file_hash = %s", (full_hash,))
-    
-    if cursor.fetchone():
-        print(f'File "{filepath}" ALREADY PROCESSED in this database!')
-        return True, full_hash
-    
-    return False, full_hash # return full_hash for insert in database for first time
+        while chunk := f.read(65536): hasher.update(chunk)
+    return hasher.hexdigest()
 
-
-def register_file(conn, filename, file_hash, chunk_size):
-    """Insert file record into processed_files table and return the new file_id."""
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            """
-            INSERT INTO files (file_name, file_hash, chunk_size)
-            VALUES (%s, %s, %s)
-            RETURNING file_id
-            """, 
-            (os.path.basename(filename), file_hash, chunk_size)
-        )
-        file_id = cursor.fetchone()[0]
-        conn.commit()
-        print(f'File "{filename}" succesfully registered with ID: {file_id}')
-        return file_id
-    except Exception as e:
-        print(f"Error registering file: {e}")
-        conn.rollback()
-        return None
-
-
-def process_file_chunks(conn, filename, file_id, chunk_size):
-    """
-    Reading binary file (4 bytes per segment), hash-function,
-    keep data segments, update/insert DATA
+def process_file_logic(filepath, db, storage):
+    file_name = os.path.basename(filepath)
+    full_hash = get_full_file_hash(filepath)
     
-    """
-    if not os.path.exists(filename):
-        print(f"Error. File: '{filename}' not found.")
+    # 1. Проверка на дубликат всего файла (твоя логика)
+    if db.check_file_exists(full_hash):
+        print(f"Файл '{file_name}' уже был обработан ранее!")
+        return file_name
+
+    # 2. Регистрация нового файла
+    print(f"Начинаем обработку: {file_name}")
+    file_id = db.register_file(file_name, full_hash, CHUNK_SIZE)
+    
+    start_time = time.time()
+    with open(filepath, "rb") as f:
+        idx = 0
+        while True:
+            chunk_data = f.read(CHUNK_SIZE)
+            if not chunk_data: break
+            
+            c_hash = hashlib.sha256(chunk_data).hexdigest()
+            offset = db.get_segment_offset(c_hash)
+            
+            if offset is None:
+                # Новый уникальный сегмент
+                offset = storage.write_segment(chunk_data)
+                db.save_unique_segment(c_hash, offset)
+            else:
+                # Дубликат сегмента
+                db.increment_ref_count(c_hash)
+            
+            # Сохраняем структуру
+            db.save_file_structure(file_id, idx, c_hash)
+            idx += 1
+            if idx % 1000 == 0: print(f"Обработано {idx} сегментов...")
+
+    print(f"Готово! Время: {time.time() - start_time:.2f} сек. Сегментов: {idx}")
+    return file_name
+
+def restore_logic(file_name, db, storage):
+    print(f"\nВосстановление файла: {file_name}")
+    recipe = db.get_file_recipe(file_name)
+    if not recipe:
+        print("Ошибка: файл не найден в БД!")
         return
 
-    cursor = conn.cursor()
-    file_size = os.path.getsize(filename)
-    segment_offset = 0  # byte offset
-    chunk_index = 0
-    processed_count = 0
-    start_time = time.time()
+    out_path = f"restored_data/RESTORED_{file_name}"
+    os.makedirs("restored_data", exist_ok=True)
     
-    print(f'Starting chunk processing. Size: {file_size} bytes...')
-    print(f'Total segment count is about {file_size/chunk_size}...')
+    with open(out_path, "wb") as f:
+        for offset, length in recipe:
+            f.write(storage.read_segment(offset, length))
     
-    
-    # 1. Reading file in banary (rb)
-    with open(filename, 'rb') as f: 
-        while True:
-            # Read a segment (4 bytes)
-            chunk = f.read(chunk_size)
-            if not chunk:
-                break
+    print(f"Файл успешно восстановлен в: {out_path}")
 
-            # HASH function
-            hash_object = hashlib.sha256(chunk)
-            hash_value = hash_object.hexdigest()
-
-            # UPSERT: Try to update counter if we already have HASH
-            cursor.execute(
-                """
-                INSERT INTO segments (hash_value, chunk_data, repetition_count)
-                VALUES (%s, %s, 1)
-                ON CONFLICT (hash_value) DO UPDATE
-                SET repetition_count = segments.repetition_count + 1
-                """,
-                (hash_value, chunk) 
-            )
-            
-            cursor.execute(
-                """
-                INSERT INTO file_segments (file_id, hash_value, chunk_index)
-                VALUES (%s, %s, %s)
-                """,
-                (file_id, hash_value, chunk_index)
-            )
-            
-            chunk_index += 1
-
-            #  If hash is new, do INSERT
-            if cursor.rowcount == 0:
-        
-                cursor.execute(
-                    """
-                    INSERT INTO file_chunks (hash_value, file_name, segment_offset, repetition_count, chunk_data)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (hash_value, os.path.basename(filename), segment_offset, 1, chunk) 
-                )
-
-            segment_offset += chunk_size
-            processed_count += 1
-
-            if processed_count % 10000 == 0:
-                print(f"Progress... {processed_count} segments done...")
-
-    conn.commit()
-    end_time = time.time()
-    
-    print("-" * 40)
-    print(f"   Processing done")
-    print(f"   File: {filename}")
-    print(f"   Segment size: {chunk_size} bytes")
-    print(f"   Total time: {end_time - start_time:.2f} sec.")
-    print(f"   Total segments count: {processed_count}")
-    print("-" * 40)
-
-def restore_file(conn, file_name: str, target_directory="./restored_data"):
-    
-    cursor = conn.cursor()
-    restored_path = os.path.join(target_directory, f"RESTORED_{file_name}")
-    
-    if not os.path.exists(target_directory):
-        os.makedirs(target_directory)
-    print(f'Start file restoration for "{file_name}"')
-    
-    
-    try:
-        query = """
-        SELECT S.chunk_data
-        FROM files F
-        JOIN file_segments FS ON F.file_id = FS.file_id
-        JOIN segments S ON FS.hash_value = S.hash_value
-        WHERE F.file_name = %s
-        ORDER BY FS.chunk_index ASC;
-        """
-        cursor.execute(query, (file_name,))
-        
-        results = cursor.fetchall()
-        
-        if not results:
-            print(f'Error: File "{file_name}" not found or has no segments')
-            return None
-        
-        with open(restored_path, "wb") as f:
-            for segment_row in results:
-                f.write(segment_row[0])
-                
-        print(f"Restoration succesful!!")
-        print(f'Restored file saved to "{restored_path}"')
-        print(f'Total segments read: {len(results)}')
-        
-        return restored_path
-    except Exception as e:
-        print(f'Error during file restoration: {e}')
-        return None
-        
 if __name__ == "__main__":
+    db_config = {
+        "host": os.getenv("HOST"),
+        "database": os.getenv("DATABASE"),
+        "user": os.getenv("USER"),
+        "password": os.getenv("PASSWORD")
+    }
     
-    # 1. Select File
-    selected_file = select_file(directory=r".\origin_data")
+    db = DBManager(db_config)
+    storage = StorageManager()
     
-    if selected_file:
-        print(f"Selected: {selected_file}")
-        file_base_name = os.path.basename(selected_file)
-        
-        # 2. Connect DB
-        db_connection = connect_db()
+    selected = select_file()
+    if selected:
+        fname = process_file_logic(selected, db, storage)
+        restore_logic(fname, db, storage)
     
-        if db_connection:
-            try:
-                # 3. Check if it is processed
-                is_processed, file_hash = check_file_processed(db_connection, selected_file)
-                
-                if not is_processed:
-                    # 4. Process chunks (for new only)
-                    file_id = register_file(db_connection, selected_file, file_hash, CHUNK_SIZE)
-                    
-                    if file_id is not None:
-                        # 5. Process chunks (for new only)
-                        process_file_chunks(db_connection, selected_file, file_id, CHUNK_SIZE)
-                else:
-                    print("Skipping processing")
-                    
-                # 6. Restoration file
-                restore_file(db_connection, file_base_name)
-                
-            except Exception as e:
-                print(f"Critical error during execution: {e}")
-            finally:
-                db_connection.close()
-                print("\nDB Connection closed")
-        else:
-            print("No file selected. Go to sleep")
-            
-            # Восстанавливать данные
-            # Искать дубли по всей бд а не по файлу
-            # Разбить так чтобы сегменты хранились отдельно в каком-то файле. Потом доставать сегменты из этого файла и собирать заново файлы
-            # Исследование по размерам файлов например
-            
+    db.close()

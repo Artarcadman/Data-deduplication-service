@@ -2,3 +2,9 @@
 
 origin_data/*
 !origin_data/.gitkeep
+
+restored_data/*
+!restored_data/.gitkeep
+
+data_storage/*
+!data_storage/.gitkeep
