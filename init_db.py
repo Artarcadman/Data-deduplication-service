@@ -56,9 +56,10 @@ def create_schema(conn):
             # ref_count     — сколько раз встретился
             cur.execute(sql.SQL("""
                 CREATE TABLE IF NOT EXISTS {table} (
-                    segment_hash  TEXT    PRIMARY KEY,
-                    segment_size  INTEGER NOT NULL,
-                    ref_count     INTEGER NOT NULL DEFAULT 1
+                    segment_hash   TEXT    PRIMARY KEY,
+                    segment_size   INTEGER NOT NULL,
+                    storage_offset BIGINT  NOT NULL,
+                    ref_count      INTEGER NOT NULL DEFAULT 1
                 );
             """).format(table=sql.Identifier(us)))
             print(f"Таблица для {us} создана")
