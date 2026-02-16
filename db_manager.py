@@ -10,6 +10,11 @@ class DBManager:
         with self.conn.cursor() as cur:
             cur.execute("SELECT 1 FROM processed_files WHERE file_hash = %s", (file_hash,))
             return cur.fetchone() is not None
+    def check_file_hash_exists(self, file_hash, chunk_size):
+        """Проверка: обрабатывался ли этот файл с заданным чанком"""
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM processed_files WHERE file_hash = %s, %s", (file_hash, chunk_size))
+            return 
 
     def register_file(self, file_name, file_hash, chunk_size):
         """Регистрация файла в базе"""

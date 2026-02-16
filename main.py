@@ -6,8 +6,10 @@ from db_manager import DBManager
 from storage_manager import StorageManager
 
 load_dotenv()
+SIZES = [4, 1024, 4096, 65536, 1048576]
+CHUNK_SIZE = SIZES[3]
+FILE_CHUNK_SIZE = 1048576
 
-CHUNK_SIZE = 4  # Учебное требование
 
 def select_file(directory="./origin_data"):
     if not os.path.exists(directory): os.makedirs(directory)
@@ -17,7 +19,7 @@ def select_file(directory="./origin_data"):
         return None
     
     print("\nДоступные файлы:")
-    for i, f in enumerate(files, 1): print(f"{i}. {f}")
+    for i, f in enumerate(files, 1): print(f"{i}. {f}")  # noqa: E701
     
     while True:
         try:
@@ -28,14 +30,14 @@ def select_file(directory="./origin_data"):
 def get_full_file_hash(filepath):
     hasher = hashlib.sha256()
     with open(filepath, 'rb') as f:
-        while chunk := f.read(65536): hasher.update(chunk)
+        while chunk := f.read(FILE_CHUNK_SIZE): hasher.update(chunk)
     return hasher.hexdigest()
 
 def process_file_logic(filepath, db, storage):
     file_name = os.path.basename(filepath)
     full_hash = get_full_file_hash(filepath)
     
-    # 1. Проверка на дубликат всего файла (твоя логика)
+    # 1. Проверка на дубликат всего файла
     if db.check_file_exists(full_hash):
         print(f"Файл '{file_name}' уже был обработан ранее!")
         return file_name
