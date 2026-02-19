@@ -14,6 +14,7 @@ def get_postgres_config() -> dict:
         "database": os.getenv("POSTGRES_DB"),
         "user": os.getenv("POSTGRES_USER"),
         "password": os.getenv("POSTGRES_PASSWORD"),
+        "options": "-c client_encoding=UTF8",
     }
     
 def get_minio_config() -> dict:

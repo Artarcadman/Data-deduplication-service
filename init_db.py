@@ -2,10 +2,14 @@
 Инициализация схемы БД.
 
 """
+import os
+os.environ["PGCLIENTENCODING"] = "UTF8"
 
 import psycopg2
 from psycopg2 import sql
 from config import get_postgres_config, CHUNK_SIZES
+
+
 
 
 def create_schema(conn):
@@ -21,6 +25,7 @@ def create_schema(conn):
             CREATE TABLE IF NOT EXISTS files (
                 file_id          SERIAL    PRIMARY KEY,
                 file_name        TEXT      NOT NULL,
+                count_hashed     INTEGER   NOT NULL   DEFAULT 0,
                 file_hash        TEXT      NOT NULL UNIQUE,
                 file_size        BIGINT    NOT NULL,
                 chunk_sizes_done INTEGER[] DEFAULT '{}'
@@ -53,13 +58,15 @@ def create_schema(conn):
             # Таблица 3: unique_segments_{size} — каталог уникальных сегментов
             # segment_hash  — хэш сегмента (он же ключ объекта в MinIO)
             # segment_size  — реальный размер в байтах (последний чанк < chunk_size)
+            # position_in_storage - позиция в хранилище
             # ref_count     — сколько раз встретился
             cur.execute(sql.SQL("""
                 CREATE TABLE IF NOT EXISTS {table} (
-                    segment_hash   TEXT    PRIMARY KEY,
-                    segment_size   INTEGER NOT NULL,
-                    storage_offset BIGINT  NOT NULL,
-                    ref_count      INTEGER NOT NULL DEFAULT 1
+                    
+                    segment_hash        TEXT    PRIMARY KEY,
+                    segment_size        INTEGER NOT NULL,
+                    storage_offset      BIGINT  NOT NULL,
+                    repits              INTEGER NOT NULL DEFAULT 1
                 );
             """).format(table=sql.Identifier(us)))
             print(f"Таблица для {us} создана")
@@ -67,10 +74,11 @@ def create_schema(conn):
 
 def main():
     print("Подключение к PostgreSQL...")
+    
     try:
         conn = psycopg2.connect(**get_postgres_config())
         conn.autocommit = True
-        print("Подключено\n")
+        print("Подключено")
     except Exception as e:
         print(f"Ошибка: {e}")
         return
@@ -79,8 +87,9 @@ def main():
     create_schema(conn)
     conn.close()
 
-    print(f"\nГотово: 1 + {len(CHUNK_SIZES) * 2} таблиц создано.")
+    print(f"\nГотово: {1 + len(CHUNK_SIZES) * 2} таблиц создано.")
 
 
 if __name__ == "__main__":
+
     main()
