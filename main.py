@@ -36,7 +36,7 @@ def process_file_logic(filepath, db, storage):
     full_hash = get_full_file_hash(filepath)
     
     # 1. Проверка на дубликат всего файла
-    if db.check_file_exists(full_hash):
+    if db.file_exists(full_hash):
         print(f"Файл '{file_name}' уже был обработан ранее!")
         return file_name
 
@@ -57,7 +57,7 @@ def process_file_logic(filepath, db, storage):
             if offset is None:
                 # Новый уникальный сегмент
                 offset = storage.write_segment(chunk_data)
-                db.save_unique_segment(c_hash, offset)
+                db.save_segment(c_hash, offset)
             else:
                 # Дубликат сегмента
                 db.increment_ref_count(c_hash)
@@ -97,9 +97,18 @@ if __name__ == "__main__":
     db = DBManager(db_config)
     storage = StorageManager()
     
-    selected = select_file()
-    if selected:
-        fname = process_file_logic(selected, db, storage)
-        restore_logic(fname, db, storage)
+    inp = input("Что хотите сделать: \n1 - Записать файл \n2 - Восстановить файл \n")
+
+    if inp == "1":
+        selected = select_file()
+        if selected:
+            fname = process_file_logic(selected, db, storage)
+    elif inp == "2":
+        selected = select_file()
+        if selected:
+            fname = restore_logic(fname, db, storage)
+
+        
+        
     
     db.close()
