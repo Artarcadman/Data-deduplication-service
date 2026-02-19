@@ -60,11 +60,11 @@ class DBManager:
         table = sql.Identifier(f"unique_segments_{chunk_size}")
         with self.conn.cursor() as cur:
             cur.execute(
-                sql.SQL("UPDATE {table} SET repits = repits + 1 WHERE segment_hash = %s"
+                sql.SQL("UPDATE {table} SET repits = repits + 1 WHERE segment_hash = %s")
                         .format(table=table),
-                        (segment_hash,)
+                        (segment_hash,),
                         )
-                )
+                
 
     def save_file_structure(self, file_id: int, chunk_index: int, chunk_size: int, segment_hash: str):
         """Запись строки в контракт сборки"""
