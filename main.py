@@ -4,11 +4,9 @@ import time
 from dotenv import load_dotenv
 from db_manager import DBManager
 from storage_manager import StorageManager
+from config import CHUNK_SIZES, FILE_CHUNK_SIZE
 
 load_dotenv()
-SIZES = [4, 1024, 4096, 65536, 1048576]
-CHUNK_SIZE = SIZES[3]
-FILE_CHUNK_SIZE = 1048576
 
 
 def select_file(directory="./origin_data"):
@@ -90,10 +88,10 @@ def restore_logic(file_name, db, storage):
 
 if __name__ == "__main__":
     db_config = {
-        "host": os.getenv("HOST"),
-        "database": os.getenv("DATABASE"),
-        "user": os.getenv("USER"),
-        "password": os.getenv("PASSWORD")
+        "host": os.getenv("POSTGRES_HOST"),
+        "database": os.getenv("POSTGRES_DB"),
+        "user": os.getenv("POSTGRES_USER"),
+        "password": os.getenv("POSTGRES_PASSWORD")
     }
     
     db = DBManager(db_config)
