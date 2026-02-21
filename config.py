@@ -6,7 +6,7 @@ load_dotenv()
 # Размеры сегментов, для которых создаём таблицы
 CHUNK_SIZES = [4, 1024, 4096, 65536, 1048576]
 
-FILE_CHUNK_SIZE = 1048576
+FILE_READ_SIZE = 1048576
 
 def get_postgres_config() -> dict:
     return {

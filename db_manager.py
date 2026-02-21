@@ -6,12 +6,37 @@ class DBManager:
         self.conn = psycopg2.connect(**config)
         self.conn.autocommit = True
 
+
     def file_exists(self, file_hash: str) -> bool:
         """Проверка: обрабатывали ли мы этот файл раньше по его хэшу"""
         with self.conn.cursor() as cur:
             cur.execute("SELECT 1 FROM files WHERE file_hash = %s", (file_hash,))
             return cur.fetchone() is not None
+        
+        
+    def file_has_chunk_size(self, file_hash: str, chunk_size: int) -> bool:
+        """Проверка: обрабатывался ли файл с данным chunk_size"""
+        
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM files WHERE file_hash = %s AND %s = ANY(chunk_sizes_done)",
+                (file_hash, chunk_size)
+            )
+            return cur.fetchone() is not None
 
+
+    def mark_chunk_size_done(self, file_hash, chunk_size):
+        """Отметить что файл обработан с данным chunk_size"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE files
+                SET chunk_sizes_done = array_append(chunk_sizes_done, %s)
+                WHERE file_hash = %s AND NOT (%s = ANY(chunk_sizes_done))
+                """,
+                (chunk_size, file_hash, chunk_size)
+            )
+        
 
     def register_file(self, file_name, file_hash, chunk_size):
         """Регистрация файла в базе"""
@@ -27,6 +52,7 @@ class DBManager:
             )
             return cur.fetchone()[0]
 
+
     def get_segment_offset(self, chunk_size: int, segment_hash: str) -> int:
         """Поиск: есть ли у нас уже такой уникальный сегмент. Если да - возвращает storage_offset"""
         
@@ -39,6 +65,7 @@ class DBManager:
             )
             row = cur.fetchone()
             return row[0] if row else None
+
 
     def save_segment(self, chunk_size: int, segment_hash: str, storage_offset: int, segment_size: int):
         """Запись нового уникального сегмента - хэша, размера и его позиции в файле"""
@@ -53,6 +80,7 @@ class DBManager:
                         """).format(table=table),
                 (segment_hash, storage_offset, segment_size)
             )
+
 
     def increment_ref_count(self, chunk_size: int, segment_hash: str):
         """Увеличение счетчика повторений если сегмент встретился повторно"""
@@ -99,6 +127,7 @@ class DBManager:
             )
             return cur.fetchall()
 
+
     def get_file_id(self, file_hash: str) -> int | None:
         """Получить file_id по хэшу файла."""
         with self.conn.cursor() as cur:
@@ -106,5 +135,8 @@ class DBManager:
             row = cur.fetchone()
             return row[0] if row else None
 
+
+
+        
     def close(self):
         self.conn.close()
