@@ -1,7 +1,8 @@
 .env
-venv
+venv/
 
-__pycache__
+__pycache__/
+*.pyc
 
 origin_data/*
 !origin_data/.gitkeep
