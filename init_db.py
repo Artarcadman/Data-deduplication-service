@@ -25,7 +25,7 @@ def create_schema(conn):
                 file_name        TEXT      NOT NULL,
                 file_hash        TEXT      NOT NULL UNIQUE,
                 file_size        BIGINT    NOT NULL,
-                chunk_sizes_done TEXT[] DEFAULT '{}'
+                processing_done TEXT[] DEFAULT '{}'
             );
         """)
         print("Таблица файлов создана")

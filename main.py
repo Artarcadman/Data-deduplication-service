@@ -4,7 +4,7 @@ import time
 from dotenv import load_dotenv
 from db_manager import DBManager
 from storage_manager import StorageManager
-from config import CHUNK_SIZES, FILE_READ_SIZE
+from config import CHUNK_SIZES, FILE_READ_SIZE, HASH_ALGORITHMS, get_postgres_config
 
 load_dotenv()
 
@@ -28,16 +28,8 @@ def select_file(directory="./origin_data"):
             if 1 <= choice <= len(files): 
                 return os.path.join(directory, files[choice-1])
         except ValueError: 
-            print("Введите только число!")
+            print("Введите число!")
 
-
-def get_full_file_hash(filepath):
-    """Получить хэш всего файла"""
-    hasher = hashlib.sha256()
-    with open(filepath, 'rb') as f:
-        while chunk := f.read(FILE_READ_SIZE): 
-            hasher.update(chunk)
-    return hasher.hexdigest()
 
 
 def select_chunk_size():
@@ -55,15 +47,39 @@ def select_chunk_size():
             print("Введите число")
 
 
-def process_file(filepath, chunk_size, db, storage):
-    """Обработать файл по заданным размерам сегментам: хэширование, дедупликация"""
+def select_algo() -> str:
+    """Выбор алгоритма хэширования."""
+    print("\nДоступные алгоритмы хэширования:")
+    for i, algo in enumerate(HASH_ALGORITHMS, 1):
+        print(f"  {i}. {algo}")
+
+    while True:
+        try:
+            choice = int(input(f"\nВыберите алгоритм (1-{len(HASH_ALGORITHMS)}): "))
+            if 1 <= choice <= len(HASH_ALGORITHMS):
+                return HASH_ALGORITHMS[choice - 1]
+        except ValueError:
+            print("Введите число!")
+            
+
+def get_full_file_hash(filepath):
+    """Получить хэш всего файла алгоритмом SHA256"""
+    hasher = hashlib.sha256()
+    with open(filepath, 'rb') as f:
+        while chunk := f.read(FILE_READ_SIZE): 
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def process_file(filepath, chunk_size, algo, db, storage):
+    """Обработать файл: хэширование, дедупликация"""
     file_name = os.path.basename(filepath)
     file_size = os.path.getsize(filepath)
     full_hash = get_full_file_hash(filepath)
     
-    # 1. Проверка на дубликат всего файла
-    if db.file_has_chunk_size(full_hash, chunk_size):
-        print(f"Файл '{file_name}' с chunk_size = {chunk_size} уже был обработан ранее!")
+    # 1. Проверка на дубликат всего файла по паре chunk_size-algo
+    if db.file_has_processing(full_hash, chunk_size, algo):
+        print(f"Файл '{file_name}' с комбинацией '{chunk_size}_{algo}' уже был обработан ранее!")
         return file_name
 
     # 2. Регистрация нового файла
@@ -80,33 +96,33 @@ def process_file(filepath, chunk_size, db, storage):
             if not chunk_data: 
                 break
             
-            c_hash = hashlib.sha256(chunk_data).hexdigest()
-            offset = db.get_segment_offset(chunk_size, c_hash)
+            seg_hash = hashlib.new(algo, chunk_data).hexdigest()
+            offset = db.get_segment_offset(chunk_size, algo, seg_hash)
             
             if offset is None:
                 # Новый уникальный сегмент
                 offset = storage.write_segment(chunk_size, chunk_data)
-                db.save_segment(chunk_size, c_hash, offset, len(chunk_data))
+                db.save_segment(chunk_size, algo, seg_hash, offset, len(chunk_data))
             else:
                 # Дубликат сегмента
-                db.increment_ref_count(chunk_size, c_hash)
+                db.increment_ref_count(chunk_size, algo, seg_hash)
             
             # Сохраняем структуру
-            db.save_file_structure(file_id, idx, chunk_size, c_hash)
+            db.save_file_structure(chunk_size, algo, file_id, idx, seg_hash)
             idx += 1
             if idx % 1000 == 0: 
                 print(f"Обработано {idx} сегментов...")
                 
-    db.mark_chunk_size_done(full_hash, chunk_size)
-    print(f"Готово!\nВремя: {time.time() - start_time:.2f} сек.\nСегментов: {idx}")
+    db.mark_processing_done(full_hash, chunk_size, algo)
+    print(f"Готово!\nВремя обработки: {time.time() - start_time:.2f} сек.\nСегментов: {idx}")
 
 
-def restore_file(file_id, file_name, chunk_size, db, storage):
+def restore_file(file_id, file_name, chunk_size, algo, db, storage):
     """Восстановление файла из сегментов"""
     
-    print(f"\nВосстановление файла: {file_name} из {chunk_size}-байтных сегментов")
+    print(f"\nВосстановление файла: {file_name} из {chunk_size}-байтных сегментов алгоритма {algo}")
     
-    recipe = db.get_file_recipe(file_id, chunk_size)
+    recipe = db.get_file_recipe(file_id, chunk_size, algo)
     if not recipe:
         print("Ошибка: контракт восстановления файла не найден в БД!")
         return
@@ -125,7 +141,7 @@ def select_file_from_db(db: DBManager) -> tuple | None:
     """Выбор файла для восстановления из таблицы метаданных files в PostgreSQL"""
     
     with db.conn.cursor() as cur:
-        cur.execute("SELECT file_id, file_name, file_hash, chunk_sizes_done FROM files ORDER BY file_id")
+        cur.execute("SELECT file_id, file_name, file_hash, processing_done FROM files ORDER BY file_id")
         rows = cur.fetchall()
         
     if not rows:
@@ -133,8 +149,8 @@ def select_file_from_db(db: DBManager) -> tuple | None:
         return None
     
     print("\nОбработанные файлы:")
-    for i, (fid, fname, fhash, sizes_done) in enumerate(rows, 1):
-        print(f" {i}, {fname} (id: {fid}, chunk_sizes: {sizes_done})")
+    for i, (fid, fname, fhash, done) in enumerate(rows, 1):
+        print(f" {i}, {fname} (id: {fid}, обработки: {done})")
     
     while True:
         try:
@@ -145,44 +161,40 @@ def select_file_from_db(db: DBManager) -> tuple | None:
             print("Введите число")
             
 
-def select_chunk_size_from_done(chunk_sizes_done: list) -> int | None:
+def select_processing_from_done(processing_done: list) -> int | None:
     """
-    Выбор размера сегмента для восстановления файла из доступных
-    Нельзя восстановить файл по размеру сегмента, по которому он не был обработан
+    Выбор пары 'chunk_size - algo' для восстановления файла из доступных
+    Нельзя восстановить файл по паре, по которой он не был обработан
     """
 
-    if not chunk_sizes_done:
-        print("Файл не был обработан ни с одним размером сегмента")
+    if not processing_done:
+        print("Файл не был обработан")
         return None
-    print("Доступные размеры сегментов для этого файла: ")
-    for i, size in enumerate(chunk_sizes_done, 1):
-        print(f" {i}. {size} байт")
+    print("Доступные варианты: ")
+    for i, key in enumerate(processing_done, 1):
+        print(f" {i}. {key}")
         
     while True:
         try:
-            choice = int(input(f"Выберите по каким сегментам начать восстановление (1-{len(chunk_sizes_done)})"))
-            if 1 <= choice <= len(chunk_sizes_done):
-                return chunk_sizes_done[choice - 1]
+            choice = int(input(f"Выберите как начать восстановление (1-{len(processing_done)})"))
+            if 1 <= choice <= len(processing_done):
+                key = processing_done[choice - 1]
+                parts = key.split("_", 1)
+                return int(parts[0]), parts[1]
         except ValueError:
             print("Введите число")
 
 
 if __name__ == "__main__":
     
-    db_config = {
-        "host": os.getenv("POSTGRES_HOST"),
-        "database": os.getenv("POSTGRES_DB"),
-        "user": os.getenv("POSTGRES_USER"),
-        "password": os.getenv("POSTGRES_PASSWORD")
-    }
     
-    db = DBManager(db_config)
+    db = DBManager(get_postgres_config())
     storage = StorageManager()
     
     # 1. Записать или восстановить
     # 2. Выбрать файл
-    # 2. Выбрать размер сегмента
-    # 3. Выбрать алгоритм
+    # 3. Выбрать размер сегмента
+    # 4. Выбрать алгоритм
      
     inp = input("Выберите действие: \n1 - Записать файл \n2 - Восстановить файл \n")
 
@@ -190,15 +202,18 @@ if __name__ == "__main__":
         selected = select_file()
         if selected:
             chunk_size = select_chunk_size()
-            process_file(selected, chunk_size, db, storage)
+            algo = select_algo()
+            process_file(selected, chunk_size, algo, db, storage)
             
     elif inp == "2":
         file_info = select_file_from_db(db)
         if file_info:
-            file_id, file_name, file_hash, chunk_sizes_done = file_info
-            chunk_size = select_chunk_size_from_done(chunk_sizes_done)
-            if chunk_size:
-                restore_file(file_id, file_name, chunk_size, db, storage)
+            file_id, file_name, file_hash, processing_done = file_info
+            result = select_processing_from_done(processing_done)
+        
+            if result:
+                chunk_size, algo = result
+                restore_file(file_id, file_name, chunk_size, algo, db, storage)
 
         
     db.close()

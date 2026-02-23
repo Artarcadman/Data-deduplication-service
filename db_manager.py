@@ -40,7 +40,7 @@ class DBManager:
             cur.execute(
                 """
                 UPDATE files
-                SET chunk_sizes_done = array_append(processing_done, %s)
+                SET processing_done = array_append(processing_done, %s)
                 WHERE file_hash = %s AND NOT (%s = ANY(processing_done))
                 """,
                 (key, file_hash, key)
