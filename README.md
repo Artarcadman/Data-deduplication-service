@@ -89,7 +89,7 @@ python benchmark.py
 
 ---
 
-# Отчёт
+# Performance Analysis
 
 ## Время обработки
 
