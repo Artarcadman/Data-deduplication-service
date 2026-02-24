@@ -7,7 +7,7 @@ os.environ["PGCLIENTENCODING"] = "UTF8"
 
 import psycopg2
 from psycopg2 import sql
-from config import get_postgres_config, CHUNK_SIZES, HASH_ALGORITHMS
+from app.config import get_postgres_config, CHUNK_SIZES, HASH_ALGORITHMS
 
 
 def create_schema(conn):
@@ -30,7 +30,18 @@ def create_schema(conn):
         """)
         print("Таблица файлов создана")
 
-
+        # Таблица storage_index_{size}
+        for size in CHUNK_SIZES:
+            si = f"storage_index_{size}"
+            cur.execute(sql.SQL("""
+                                CREATE TABLE IF NOT EXISTS {table} (
+                                    content_hash TEXT PRIMARY KEY,
+                                    storage_offset BIGINT NOT NULL,
+                                    segment_size INTEGER NOT NULL
+                                );
+                                """).format(table=sql.Identifier(si)))
+            print(f"Таблица для {si} создана")
+        
         # Для каждой пары "chunk_size - algo" создаём пару таблиц
         for size in CHUNK_SIZES:
             for algo in HASH_ALGORITHMS:
@@ -70,7 +81,9 @@ def create_schema(conn):
                 
                 print(f"Таблица для {fc} создана")
 
-            
+    tables_count = 1 + len(CHUNK_SIZES) + len(CHUNK_SIZES) * len(HASH_ALGORITHMS) * 2
+    return tables_count
+        
 def main():
     print("Подключение к PostgreSQL...")
     
@@ -83,10 +96,10 @@ def main():
         return
 
     print("Создание таблиц:")
-    create_schema(conn)
+    tables_count = create_schema(conn)
     conn.close()
 
-    print(f"\nГотово: {1 + len(CHUNK_SIZES) * len(HASH_ALGORITHMS) * 2} таблиц создано.")
+    print(f"\nГотово: {tables_count} таблиц создано.")
 
 
 if __name__ == "__main__":

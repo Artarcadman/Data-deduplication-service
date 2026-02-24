@@ -151,7 +151,31 @@ class DBManager:
     
 
 
+    def get_storage_offset(self, chunk_size: int, content_hash: str) -> tuple | None:
+        """Проверить: записан ли сегмент в хранилище? Возвращает (offset, size) или None."""
+        table = sql.Identifier(f"storage_index_{chunk_size}")
+        with self.conn.cursor() as cur:
+            cur.execute(
+                sql.SQL("SELECT storage_offset, segment_size FROM {table} WHERE content_hash = %s")
+                .format(table=table),
+                (content_hash,),
+            )
+            return cur.fetchone()
 
+
+
+    def save_storage_index(self, chunk_size: int, content_hash: str, storage_offset: int, segment_size: int):
+        """Записать позицию сегмента в индекс хранилища."""
+        table = sql.Identifier(f"storage_index_{chunk_size}")
+        with self.conn.cursor() as cur:
+            cur.execute(
+                sql.SQL("""
+                    INSERT INTO {table} (content_hash, storage_offset, segment_size)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT DO NOTHING
+                """).format(table=table),
+                (content_hash, storage_offset, segment_size),
+            )
         
     def close(self):
         self.conn.close()

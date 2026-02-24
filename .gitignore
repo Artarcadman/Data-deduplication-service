@@ -1,6 +1,7 @@
 .env
 venv/
 
+
 __pycache__/
 *.pyc
 
@@ -12,3 +13,6 @@ restored_data/*
 
 data_storage/*
 !data_storage/.gitkeep
+
+bigdata/
+analytics/benchmark_results.csv

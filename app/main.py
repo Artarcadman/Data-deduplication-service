@@ -2,9 +2,9 @@ import os
 import hashlib
 import time
 from dotenv import load_dotenv
-from db_manager import DBManager
-from storage_manager import StorageManager
-from config import CHUNK_SIZES, FILE_READ_SIZE, HASH_ALGORITHMS, get_postgres_config
+from app.db_manager import DBManager
+from app.storage_manager import StorageManager
+from app.config import CHUNK_SIZES, FILE_READ_SIZE, HASH_ALGORITHMS, get_postgres_config
 
 load_dotenv()
 
@@ -96,12 +96,28 @@ def process_file(filepath, chunk_size, algo, db, storage):
             if not chunk_data: 
                 break
             
-            seg_hash = hashlib.new(algo, chunk_data).hexdigest()
-            offset = db.get_segment_offset(chunk_size, algo, seg_hash)
+            # Проверяем storage_index содержимого по SHA256, 
+            # чтобы не дублировать данные при обработке 
+            # разными алгоритмами 
+            content_hash = hashlib.sha256(chunk_data).hexdigest()
             
-            if offset is None:
-                # Новый уникальный сегмент
+            if algo == "sha256":
+                seg_hash = content_hash
+            else:
+                seg_hash = hashlib.new(algo, chunk_data).hexdigest()
+            
+            stored = db.get_storage_offset(chunk_size, content_hash)
+            if stored is not None:
+                offset, seg_size = stored
+            else:
                 offset = storage.write_segment(chunk_size, chunk_data)
+                db.save_storage_index(chunk_size, content_hash, offset, len(chunk_data))
+            
+            
+            # Запись в таблицу алгоритма отдельно от хранилища
+            existing = db.get_segment_offset(chunk_size, algo, seg_hash)
+            if existing is None:
+                # Новый уникальный сегмент для этого алгоритма
                 db.save_segment(chunk_size, algo, seg_hash, offset, len(chunk_data))
             else:
                 # Дубликат сегмента
