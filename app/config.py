@@ -24,12 +24,3 @@ def get_postgres_config() -> dict:
         "password": os.getenv("POSTGRES_PASSWORD"),
         "options": "-c client_encoding=UTF8",
     }
-    
-# Конфигурация MinIO    
-def get_minio_config() -> dict:
-    return {
-        "host": os.getenv("MINIO_HOST", "localhost:9000"),
-        "access_key": os.getenv("MINIO_ACCESS_KEY"),
-        "secret_key": os.getenv("MINIO_SECRET_KEY"),
-        "secure": os.getenv("MINIO_SECURE")
-    }
