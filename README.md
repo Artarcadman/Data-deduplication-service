@@ -97,7 +97,7 @@ python benchmark.py
 
 ## Уникальные vs Дубликаты
 
-![Unique vs Duplicate](analytics\images\count.png)
+![Unique vs Duplicate](analytics/images/count.png)
 
 ## Коэффициент дедупликации
 
