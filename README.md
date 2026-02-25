@@ -91,22 +91,55 @@ python benchmark.py
 
 # Performance Analysis
 
+# Benchmark & Performance
+
+---
+
 ## Время обработки
 
-![Общее время обработки и среднее время на сегмент](analytics\images\time.png)
+<p align="center">
+  <img src="analytics/images/time.png" width="850">
+</p>
+
+<p align="center">
+  <em>Общее время обработки и среднее время на сегмент для разных размеров сегментов</em>
+</p>
+
+---
 
 ## Уникальные vs Дубликаты
 
-![Unique vs Duplicate](analytics/images/count.png)
+<p align="center">
+  <img src="analytics/images/count.png" width="850">
+</p>
+
+<p align="center">
+  <em>Количество уникальных и дублирующихся сегментов</em>
+</p>
+
+---
 
 ## Коэффициент дедупликации
 
-![Dedup Rate](analytics\images\dedup_rate.png)
+<p align="center">
+  <img src="analytics/images/dedup_rate.png" width="850">
+</p>
+
+<p align="center">
+  <em>Dedup Rate = duplicate_segments / total_segments × 100%</em>
+</p>
+
+---
 
 ## Размеры хранилища vs Оригинал
 
-![Storage vs Original](analytics\images\sizes.png)
+<p align="center">
+  <img src="analytics/images/sizes.png" width="850">
+</p>
 
+<p align="center">
+  <em>Сравнение суммарного объёма storage_{chunk_size}.bin с размером исходных данных</em>
+</p>
 ---
 
 ## Ключевые выводы
