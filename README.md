@@ -140,6 +140,7 @@ python benchmark.py
 <p align="center">
   <em>Сравнение суммарного объёма storage_{chunk_size}.bin с размером исходных данных</em>
 </p>
+
 ---
 
 ## Ключевые выводы
