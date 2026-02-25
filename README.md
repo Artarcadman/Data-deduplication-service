@@ -91,8 +91,6 @@ python benchmark.py
 
 # Performance Analysis
 
-# Benchmark & Performance
-
 ---
 
 ## Время обработки
