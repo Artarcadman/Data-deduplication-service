@@ -38,6 +38,7 @@ venv\Scripts\activate
 source venv/bin/activate
 
 pip install -r requirements.txt
+
 ```
 
 ### 2. Настройка PostgreSQL
@@ -61,7 +62,7 @@ POSTGRES_PASSWORD=artem
 ### 3. Инициализация таблиц
 
 ```bash
-python init_db.py
+python app/init_db.py
 ```
 
 ### 4. Подготовка данных
@@ -77,13 +78,13 @@ origin_data/
 Интерактивный режим (запись / восстановление):
 
 ```bash
-python main.py
+python -m app.main
 ```
 
 Бенчмарк всех файлов:
 
 ```bash
-python benchmark.py
+python -m analytics.benchmark
 # результат: analytics/benchmark_results.csv
 ```
 

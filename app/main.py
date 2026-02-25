@@ -166,7 +166,7 @@ def select_file_from_db(db: DBManager) -> tuple | None:
     
     print("\nОбработанные файлы:")
     for i, (fid, fname, fhash, done) in enumerate(rows, 1):
-        print(f" {i}, {fname} (id: {fid}, обработки: {done})")
+        print(f" {i}, {fname} (id: {fid}, обработки: {done}\n)")
     
     while True:
         try:
