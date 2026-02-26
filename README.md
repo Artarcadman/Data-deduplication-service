@@ -56,7 +56,7 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DB=db_dedupl
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=artem
+POSTGRES_PASSWORD=postgres
 ```
 
 ### 3. Инициализация таблиц
